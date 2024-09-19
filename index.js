@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Events } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, AudioPlayer } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, getVoiceConnection } = require('@discordjs/voice');
 const path = require('path');
 const fs = require('fs');
 
@@ -19,6 +19,15 @@ client.once(Events.ClientReady, () => {
     console.log(`${client.user.tag} está online!`);
 });
 
+// Função para buscar arquivos de música na pasta 'music'
+function findMusicFile(term) {
+    const musicFolder = path.join(__dirname, 'music');
+    const files = fs.readdirSync(musicFolder);
+    // Filtrar arquivos que contêm o termo no nome
+    const matchedFiles = files.filter(file => file.toLowerCase().includes(term.toLowerCase()));
+    return matchedFiles.length > 0 ? matchedFiles[0] : null;
+}
+
 // Comandos de música
 client.on(Events.MessageCreate, async (message) => {
     if (!message.guild || message.author.bot) return;
@@ -27,16 +36,17 @@ client.on(Events.MessageCreate, async (message) => {
     const command = args.shift().toLowerCase();
 
     if (command === '!play') {
-        const songName = args.join(' ');  // Nome do arquivo de música
+        const searchTerm = args.join(' ');  // Termo de pesquisa
 
-        // Verificar se o nome do arquivo foi fornecido
-        if (!songName) return message.reply('Você precisa fornecer o nome do arquivo de música!');
+        // Verificar se o termo de pesquisa foi fornecido
+        if (!searchTerm) return message.reply('Você precisa fornecer um termo de pesquisa!');
+
+        // Buscar o arquivo de música
+        const songName = findMusicFile(searchTerm);
+        if (!songName) return message.reply('Nenhuma música encontrada com esse termo!');
 
         // Construir o caminho para o arquivo de música
         const filePath = path.join(__dirname, 'music', songName);
-
-        // Verificar se o arquivo existe
-        if (!fs.existsSync(filePath)) return message.reply('Arquivo de música não encontrado!');
 
         // Conectar ao canal de voz
         const channel = message.member.voice.channel;
