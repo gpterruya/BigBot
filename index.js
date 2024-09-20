@@ -83,6 +83,29 @@ client.on(Events.MessageCreate, async (message) => {
         connection.destroy();
         message.reply('Música parada!');
     }
+
+    if (message.content === '!list') {
+        // Caminho da pasta onde estão as músicas
+        const musicFolder = path.join(__dirname, 'music');
+        
+        // Lê os arquivos da pasta de músicas
+        fs.readdir(musicFolder, (err, files) => {
+            if (err) {
+                console.error(err);
+                return message.channel.send('Ocorreu um erro ao tentar acessar a pasta de músicas.');
+            }
+
+            // Filtra apenas os arquivos com extensão de áudio (ex: .mp3, .wav)
+            const musicFiles = files.filter(file => file.endsWith('.mp3') || file.endsWith('.wav'));
+
+            if (musicFiles.length === 0) {
+                return message.channel.send('Não há músicas disponíveis na pasta.');
+            }
+
+            // Envia a lista de músicas
+            message.channel.send(`Músicas disponíveis:\n${musicFiles.join('\n')}`);
+        });
+    }
 });
 
 // Login do bot
