@@ -3,7 +3,7 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, getVoiceConnection } = require('@discordjs/voice');
 const path = require('path');
 const fs = require('fs');
-const ytdl = require('ytdl-core');
+const ytdl = require('youtube-dl-exec');
 
 // Criar cliente do Discord
 const client = new Client({
@@ -112,38 +112,40 @@ client.on(Events.MessageCreate, async (message) => {
         const args = message.content.split(' ');
         const url = args[1];
 
-        if (!ytdl.validateURL(url)) {
-            return message.channel.send('Por favor, envie um link válido do YouTube.');
+        if (!url || !url.includes('youtube.com')) {
+            message.channel.send('Por favor, forneça um link válido do YouTube.');
+            return;
         }
 
-        const info = await ytdl.getInfo(url);
-        const title = info.videoDetails.title.replace(/[^\w\s]/gi, ''); // Nome do arquivo sem caracteres especiais
-
-        const outputPath = path.resolve(__dirname, 'music', `${title}.mp3`);
-
-        message.channel.send(`Baixando: **${title}**...`);
+        // Define o nome do arquivo de saída e o caminho da pasta "music"
+        const musicFolderPath = path.join(__dirname, 'music');
+        if (!fs.existsSync(musicFolderPath)) {
+            fs.mkdirSync(musicFolderPath);
+        }
 
         try {
-            // Stream de download e conversão para MP3 usando ffmpeg
-            const stream = ytdl(url, { filter: 'audioonly' });
-
-            // Salvando o áudio como arquivo .mp3 na pasta "music"
-            const audioFile = fs.createWriteStream(outputPath);
-
-            stream.pipe(audioFile);
-
-            audioFile.on('finish', () => {
-                message.channel.send(`Música **${title}** foi baixada e salva na pasta **music**.`);
+            // Obtém informações do vídeo, incluindo o título
+            const info = await ytdl(url, {
+                dumpSingleJson: true,
+                noPlaylist: true,
             });
 
-            audioFile.on('error', (err) => {
-                console.error('Erro ao salvar o arquivo:', err);
-                message.channel.send('Ocorreu um erro ao baixar a música.');
+            const title = info.title.replace(/[\/\\?%*:|"<>]/g, '-'); // Remove caracteres inválidos
+            const output = path.join(musicFolderPath, `${title}.mp3`);
+
+            message.channel.send(`Baixando música: ${title}...`);
+
+            // Usa o yt-dlp para baixar o áudio do vídeo
+            await ytdl(url, {
+                extractAudio: true,
+                audioFormat: 'mp3',
+                output: output,
             });
 
+            message.channel.send('Música baixada com sucesso!');
         } catch (error) {
-            console.error('Erro ao baixar a música:', error);
-            message.channel.send('Houve um erro ao processar o link do YouTube.');
+            console.error('Erro ao baixar música:', error);
+            message.channel.send('Ocorreu um erro ao tentar baixar a música.');
         }
     }
 
