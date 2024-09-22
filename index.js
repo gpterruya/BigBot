@@ -3,6 +3,7 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, getVoiceConnection } = require('@discordjs/voice');
 const path = require('path');
 const fs = require('fs');
+const ytdl = require('ytdl-core');
 
 // Criar cliente do Discord
 const client = new Client({
@@ -87,7 +88,7 @@ client.on(Events.MessageCreate, async (message) => {
     if (message.content === '!list') {
         // Caminho da pasta onde estão as músicas
         const musicFolder = path.join(__dirname, 'music');
-        
+
         // Lê os arquivos da pasta de músicas
         fs.readdir(musicFolder, (err, files) => {
             if (err) {
@@ -106,6 +107,119 @@ client.on(Events.MessageCreate, async (message) => {
             message.channel.send(`Músicas disponíveis:\n${musicFiles.join('\n')}`);
         });
     }
+
+    if (message.content.startsWith('!baixarmusica')) {
+        const args = message.content.split(' ');
+        const url = args[1];
+
+        if (!ytdl.validateURL(url)) {
+            return message.channel.send('Por favor, envie um link válido do YouTube.');
+        }
+
+        const info = await ytdl.getInfo(url);
+        const title = info.videoDetails.title.replace(/[^\w\s]/gi, ''); // Nome do arquivo sem caracteres especiais
+
+        const outputPath = path.resolve(__dirname, 'music', `${title}.mp3`);
+
+        message.channel.send(`Baixando: **${title}**...`);
+
+        try {
+            // Stream de download e conversão para MP3 usando ffmpeg
+            const stream = ytdl(url, { filter: 'audioonly' });
+
+            // Salvando o áudio como arquivo .mp3 na pasta "music"
+            const audioFile = fs.createWriteStream(outputPath);
+
+            stream.pipe(audioFile);
+
+            audioFile.on('finish', () => {
+                message.channel.send(`Música **${title}** foi baixada e salva na pasta **music**.`);
+            });
+
+            audioFile.on('error', (err) => {
+                console.error('Erro ao salvar o arquivo:', err);
+                message.channel.send('Ocorreu um erro ao baixar a música.');
+            });
+
+        } catch (error) {
+            console.error('Erro ao baixar a música:', error);
+            message.channel.send('Houve um erro ao processar o link do YouTube.');
+        }
+    }
+
+    if (message.content === '!playrandom') {
+        if (message.member.voice.channel) {
+            // Caminho para a pasta de músicas
+            const musicFolder = path.join(__dirname, 'music');
+
+            // Lê a lista de arquivos da pasta
+            fs.readdir(musicFolder, (err, files) => {
+                if (err) {
+                    console.error('Erro ao ler a pasta:', err);
+                    return;
+                }
+
+                if (files.length === 0) {
+                    message.reply('A pasta de música está vazia!');
+                    return;
+                }
+
+                // Filtra apenas arquivos de áudio (ex: .mp3 e .wav)
+                const musicFiles = files.filter(file => file.endsWith('.mp3') || file.endsWith('.wav'));
+
+                if (musicFiles.length === 0) {
+                    message.reply('Não há músicas no formato correto na pasta!');
+                    return;
+                }
+
+                // Embaralha a lista de músicas
+                const shuffledMusic = musicFiles.sort(() => Math.random() - 0.5);
+
+                // Cria o player de áudio
+                const player = createAudioPlayer();
+
+                // Entra no canal de voz
+                const connection = joinVoiceChannel({
+                    channelId: message.member.voice.channel.id,
+                    guildId: message.guild.id,
+                    adapterCreator: message.guild.voiceAdapterCreator,
+                });
+
+                // Função para tocar a próxima música
+                const playNextSong = () => {
+                    if (shuffledMusic.length === 0) {
+                        // Quando todas as músicas forem tocadas, desconecta do canal
+                        connection.destroy();
+                        message.channel.send('Todas as músicas foram tocadas!');
+                        return;
+                    }
+
+                    // Pega a próxima música da lista
+                    const nextSong = shuffledMusic.shift();
+                    const musicPath = path.join(musicFolder, nextSong);
+
+                    // Cria o recurso de áudio a partir do arquivo
+                    const resource = createAudioResource(musicPath);
+                    player.play(resource);
+
+                    // Notifica o usuário
+                    message.channel.send(`Tocando: **${nextSong}**`);
+
+                    // Quando a música terminar, toca a próxima
+                    player.once(AudioPlayerStatus.Idle, playNextSong);
+                };
+
+                // Conecta o player ao canal de voz
+                connection.subscribe(player);
+
+                // Começa tocando a primeira música
+                playNextSong();
+            });
+        } else {
+            message.reply('Você precisa estar em um canal de voz para tocar música!');
+        }
+    }
+
 });
 
 // Login do bot
